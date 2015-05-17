@@ -1,0 +1,157 @@
+#INCLUDE "consts.inc"
+#USE "course.lib"
+
+--* Kenta Hasui
+--* Final Exam Assignment 2: Water Molecule Problem
+--* CS377: Spring 2015
+--* To compile: kroc watermolecule.occ -lcourse
+--* To run: ./watermolecule
+
+--* This is an implementation of the water molecule problem. 
+--* I have implemented the main processes Hydrogen, Oxygen, and Water, 
+--* which all simulate the creation of hydrogen atoms, 
+--* oxygen atoms, and water molecules. I have represented each 
+--* atom/molecule as a number. The hydrogen atom is output as a 1, 
+--* the oxygen atom is 2, and water molecule is 3. I chose not to
+--* represent them as characters, as many of the pre-defined course 
+--* processes use int channels rather than byte channels. 
+--* In addition to those main processes, I've defined helper process 
+--* print.stream (for printing outputs to the screen). 
+
+
+--* Pauses execution of the invoking process by delay microseconds
+--* Other processes are unaffected.
+--*
+--* @param delay : the length of the pause (in microseconds)
+--*
+PROC pause (VAL INT delay)
+  TIMER tim:
+  INT t:
+  SEQ
+    tim ? t
+    tim ? AFTER t PLUS delay
+:
+
+--* This process continually outputs hydrogen atoms. 
+--* The atoms are represented as the integer 1. Outputs
+--* to two channels: one to the Water process and one to
+--* the print.stream process. 
+--* Since these processes are composed 
+--* in parallel and no channel is being read from/written into
+--* by two processes, deadlock will not occur. 
+PROC Hydrogen(CHAN INT out1!, out2!)
+  CHAN INT a, b, c:
+  PAR
+    -- Continually output 1
+    prefix(1, b?, a!)
+    -- Feed back number into prefix, to continue loop
+    delta(a?, b!, c!)
+    -- Output to water and to print.stream processes
+    delta(c?, out1!, out2!)
+:
+
+--* This process is the same as Hydrogen, but outputs 
+--* Oxygen atoms. 
+PROC Oxygen(CHAN INT out1!, out2!)
+  CHAN INT a, b, c:
+  PAR
+    -- Continually output 2
+    prefix(2, b?, a!)
+    delta(a?, b!, c!)
+    delta(c?, out1!, out2!)
+:
+
+--* This is the big bad process: WATER
+--* It combines the hydrogen atoms and oxygen atoms to create H2O. 
+--* It waits to receive two hydrogen atoms for every oxygen atom.
+--* The inputs must be received from the Hydrogen process and the
+--* Oxygen process. 
+--* Like the Oxygen and Hydrogen processes, its output is a number
+--* representing water molecules: the integer 3.  
+PROC Water(CHAN INT h1?, h2?, o?, print!)
+  WHILE TRUE
+    SEQ
+      -- Read values in from input channels
+      [3]INT x:
+      PAR
+        h1 ? x[0]
+        h2 ? x[1]
+        o  ? x[2]
+      -- Output a water molecule only after receiving 3 inputs
+      print ! 3
+:
+
+--* This process prints out values. It has specific
+--* input channels for hydrogen atoms, oxygen atoms, 
+--* and water molecules. It uses an ALT to choose between
+--* the four channels. 
+PROC print.stream(VAL INT delay, CHAN INT h1?, h2?, oxygen?, water?, CHAN BYTE out!)
+  INT x, h, o, w:
+  SEQ
+    -- * Initialize counter variables *
+    PAR
+      h := 0
+      o := 0
+      w := 0
+    -- * Loop forever
+    WHILE TRUE
+      -- * Guarded processes: print whenever they are ready
+      -- * Print statements need to be done in sequence, or else 
+      -- * we get gibberish outputs
+      SEQ
+        ALT
+          -- If a value is available, increment the counter and print
+          -- the value
+          h1 ? x
+            SEQ
+              h := h + 1
+              out.string("HYDROGEN atom produced: Number  ", 0, out!)
+              out.int(h, 0, out!)
+              out.string("*n", 0, out!)
+          -- If a hydrogen atom is produced, increment the hydrogen
+          -- counter (h) and print out how many have been produced
+          h2 ? x
+            SEQ
+              h := h + 1
+              out.string("HYDROGEN atom produced: Number  ", 0, out!)
+              out.int(h, 0, out!)
+              out.string("*n", 0, out!)
+          -- If an oxygen atom is produced, increment the oxygen 
+          -- counter and print out an informative message
+          oxygen ? x
+            SEQ
+              o := o + 1
+              out.string("OXYGEN atom produced: Number    ", 0, out!)
+              out.int(o, 0, out!)
+              out.string("*n", 0, out!)
+          -- If a water molecule is produced, increment the water
+          -- counter and print out an informative message
+          water ? x
+            SEQ
+              w := w + 1
+              out.string("WATER molecule produced: Number ", 0, out!)
+              out.int(w, 0, out!)
+              out.string("*n", 0, out!)
+        -- Pause execution for a bit
+        pause(delay)
+:
+
+--* Main process of execution: process network
+PROC main(CHAN BYTE keyboard?, screen!, error!)
+  CHAN INT a, b, c, d, e, f, g:
+  PAR
+    -- The 2 hydrogen processes. They each have an output channel to the
+    -- Water process and to the Print.stream process
+    Hydrogen(a!, b!)
+    Hydrogen(c!, d!)
+    -- The oxygen process also outputs to Water and print.stream
+    Oxygen(e!, f!)
+    -- The water process receives its input from the two hydrogen 
+    -- processes and the one oxygen process. It sends its 
+    -- output to print.stream
+    Water(b?, d?, f?, g!)
+    -- The print.stream process receives its input from 
+    -- the 2 hydrogen processes, the oxygen process, 
+    -- and the water process. It outputs to the screen
+    print.stream(10000, a?, c?, e?, g?, screen!)
+:

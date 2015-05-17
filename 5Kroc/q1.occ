@@ -1,0 +1,101 @@
+#INCLUDE "consts.inc"
+#USE "course.lib"
+
+--* This outputs even numbers from 0 upwards
+PROC S0 (CHAN INT out!)
+  CHAN INT a, b, c, d: 
+  PAR
+    delta (a?, out!, b!)    
+    --* increment by 2
+    succ (b?, c!)
+    succ (c?, d!)
+    --* Initialize with value 0
+    prefix(0, d?, a!)
+:
+
+--* This outputs odd numbers from 1 upwards
+PROC S1 (CHAN INT out!)
+  CHAN INT a, b, c, d:
+  PAR
+    --* Outputs result, keeps looping
+    delta(a?, out!, b!)
+    --* Increment by 2
+    succ(b?, c!)
+    succ(c?, d!)
+    --* Initialize with value 1
+    prefix(1, d?, a!)
+:
+
+--* This pauses execution of the invoking process by delay microseconds.
+-- Other processes are unaffected.
+-- @param delay The length of the pause (in microseconds)
+PROC pause (VAL INT delay)
+  TIMER tim:
+  INT t:
+  SEQ
+    tim ? t
+    tim ? AFTER t PLUS delay
+:
+
+--* This inputs a number and tabulates it on a single line of output.
+-- Then, it pauses for delay microseconds.  It repeats this for ever.
+-- @param delay The length of the pause (in microseconds)
+-- @param in Numbers coming in
+-- @param out Characters going out
+PROC print.stream (VAL INT delay, columns, CHAN INT in?, CHAN BYTE out!)
+  WHILE TRUE
+    SEQ
+      INT n:
+      -- Print out all numbers in one column
+      SEQ i = 0 FOR columns
+        SEQ
+          in ? n
+          out.int (n, i+5, out!)             -- out.int is from "course.lib"
+          pause (delay)
+      -- Print out a new line
+      out.string("*n", 0, out!)
+:
+
+--* This multiplexes numbers from its two input channels to its output channel.
+-- It alternates taking one number from one channel and forwarding it - then
+-- from the other channel and forwarding it.  It continues doing this for ever.
+-- It assumes numbers will always be offered to both input channels.
+PROC alternate (CHAN INT in0?, in1?, out!)
+  INT x, y:
+  -- Loop forever: 
+  WHILE TRUE
+    SEQ
+      -- First read the input values into the variables in parallel
+      PAR
+        in0 ? x
+        in1 ? y
+      -- Now output the values
+      out ! x
+      out ! y
+:
+
+--* Filters out all values that are multiples of a given value
+PROC filter(VAL INT number, CHAN INT in?, out!)
+  INT x:
+  WHILE TRUE
+    SEQ
+      -- Read in value from in
+      in ? x
+      IF
+        -- If x MOD number is 0 (x is multiple of the number), do nothing
+        (x \ number) = 0
+          SKIP
+        -- Otherwise output the value
+        TRUE
+          out ! x
+:
+
+PROC q1 (CHAN BYTE keyboard?, screen!, error!)
+  CHAN INT a, b, c, d:
+  PAR
+    S0(a!)      
+    S1(b!)
+    alternate(a?, b?, c!)
+    filter(5, c?, d!)
+    print.stream(100000, 3, d?, screen!)
+:

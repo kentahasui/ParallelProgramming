@@ -1,0 +1,159 @@
+#INCLUDE "consts.inc"
+#USE "course.lib"
+
+--* Kenta Hasui
+--* Final Exam Assignment 2: Water Molecule Problem
+--* CS377: Spring 2015
+
+--* This is an implementation of the water molecule problem. 
+--* I have implemented the main processes Hydrogen, Oxygen, and Water, 
+--* which all simulate the creation of hydrogen atoms, 
+--* oxygen atoms, and water molecules. I have represented each 
+--* atom/molecule as a number. Each number indicates how many 
+--* have been created so far: the first molecule to be created 
+--* is 0, the next is 1, and so on and so forth. I chose not to 
+--* represent them as characters, as many of the pre-defined course 
+--* processes use int channels rather than byte channels. 
+
+--* In addition to those main processes, I've defined helper processes 
+--* Combine.Hydrogen (composes 2 hydrogen atoms together),
+--* Combine.Water (composes a hydrogen molecule and a water atom), 
+--* counter (keeps a counter of how many water molecules produced so
+--* far), and print.stream (for printing outputs to the screen). 
+
+--* Pauses execution of the invoking process by delay microseconds
+--* Other processes are unaffected.
+--*
+--* @param delay : the length of the pause (in microseconds)
+--*
+PROC pause (VAL INT delay)
+  TIMER tim:
+  INT t:
+  SEQ
+    tim ? t
+    tim ? AFTER t PLUS delay
+:
+
+--* This process continually outputs hydrogen atoms. 
+--* The atoms are represented as integers, indicating 
+--* how many atoms have already been produced. Outputs
+--* to two channels: one to the Water process and one to
+--* the print.stream process. 
+--* The numbers process continually outputs numbers from 0 onwards.
+--* To make sure we start the count at 1, we put its output through 
+--* a succ process. Then we send the outputs out to the Water and 
+--* print.stream processes. Since these processes are composed 
+--* in parallel and no channel is being read from/written into
+--* by two processes, deadlock will not occur. 
+PROC Hydrogen(CHAN INT out1!, out2!)
+  CHAN INT a, b:
+  SEQ
+    PAR
+      numbers(a!)
+      succ(a?, b!)
+      delta(b?, out1!, out2!)
+    pause(0)
+:
+
+--* This process is the same as Hydrogen, but outputs 
+--* Oxygen atoms. 
+PROC Oxygen(CHAN INT out1!, out2!)
+  CHAN INT a, b:
+  SEQ
+    PAR
+      numbers(a!)
+      succ(a?, b!)
+      delta(b?, out1!, out2!)
+    pause(0)
+:
+
+--* Helper process for Water. Represents combining two 
+--* hydrogen atoms into one hydrogen molecule. 
+--* We compose the read and write statements in sequence
+--* because we have to make sure two values are read 
+--* (two hydrogen atoms are acquired) before an H2 
+--* molecule can be produced
+PROC Combine.Hydrogen(CHAN INT in?, out!)
+  INT x, y:
+  WHILE TRUE
+    -- Must be in sequence because we are reading from the same 
+    -- channel twice in a row. 
+    SEQ
+      in ? x
+      in ? y
+      -- Represents how many Hydrogen (H2) molecules have been made
+      out ! (y / 2)
+:
+
+--* Another helper process for water. Represents combining
+--* an oxygen atom and a hydrogen molecule (H2). The output 
+--* will be the same as the number of oxygen atoms produced, 
+--* because there must be one water molecule produced per oxygen
+--* atom (In other words, H2O only has 1 oxygen in it). 
+--* We can read from the hydrogen and oxygen molecules in parallel,
+--* since they are different channels. The write must be done in
+--* sequence, however, because the value of the output is 
+--* dependent on the values we have read in. 
+PROC Combine.Water(CHAN INT hydrogen?, oxygen?, out!)
+  INT x, y:
+  WHILE TRUE
+    SEQ
+      -- READ in parallel
+      PAR
+        hydrogen ? x
+        oxygen ? y
+      -- Write only after both values are read
+      out ! y
+:
+
+--************
+--* This is the big bad process: WATER
+--* It combines the hydrogen atoms and oxygen atoms to create H2O. 
+--* It waits to receive two hydrogen atoms for every oxygen atom.
+--* The inputs must be received from the Hydrogen process and the
+--* Oxygen process. 
+--* Like the Oxygen and Hydrogen processes, its output is a number
+--* representing how many have been produced so far. 
+--* This is a composition of two smaller processes: combine.water and
+--* combine.hydrogen. All the processes can be composed in parallel
+--* because they read from and output to different channels. Thus we 
+--* can avoid race conditions and nondeterminism. 
+PROC Water(CHAN INT hydrogen?, oxygen?, print!)
+  CHAN INT h2:
+  PAR
+    -- Gets hydrogens from the hydrogen process, passes to combine.water
+    Combine.Hydrogen(hydrogen?, h2!)
+    -- Receives a hydrogen molecule and an oxygen atom. Outputs a number
+    Combine.Water(h2?, oxygen?, print!)
+:
+
+--* This process prints out values. It has specific
+--* input channels for hydrogen atoms, oxygen atoms, 
+--* and water molecules. It uses an ALT to choose between
+--* the three channels. 
+PROC print.stream(VAL INT delay, CHAN INT hydrogen?, oxygen?, water?, CHAN BYTE out!)
+  WHILE TRUE
+    INT x:
+    SEQ
+      PRI ALT
+        water ? x
+          out.string("Water molecule produced: Number ", 0, out!)
+        oxygen ? x
+          out.string("Oxygen atom produced: Number    ", 0, out!)
+        hydrogen ? x
+          out.string("Hydrogen atom produced: Number  ", 0, out!)
+      SEQ
+        out.int(x, 0, out!)
+        out.string("*n", 0, out!)
+        pause(delay)
+:
+
+--* Main process of execution
+PROC main(CHAN BYTE keyboard?, screen!, error!)
+  CHAN INT a, b, c, d, e:
+  PAR
+    Hydrogen(a!, b!)
+    Oxygen(c!, d!)
+    Water(b?, d?, e!)
+    print.stream(10000, a?, c?, e?, screen!)
+:
